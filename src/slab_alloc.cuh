@@ -43,6 +43,7 @@ class SlabAllocLightContext {
       ((BITMAP_SIZE_ + MEM_BLOCK_SIZE_) * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
   static constexpr uint32_t MEM_BLOCK_OFFSET_ =
       (BITMAP_SIZE_ * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
+  static constexpr uint32_t THRESHOLD_NUM_ATTEMPTS_ = 128;
 
   __device__ __host__ SlabAllocLightContext()
       : d_super_blocks_(nullptr)
@@ -75,13 +76,8 @@ class SlabAllocLightContext {
   __device__ __host__ ~SlabAllocLightContext() {}
 
   __device__ __host__ void initParameters(uint32_t** d_super_block, uint32_t hash_coef) {
-
-    std::cout << "Initializing SlabAllocLightContext" << std::endl;
-
     d_super_blocks_ = d_super_block;
     hash_coef_ = hash_coef;
-
-    std:: cout << "Exiting SlabAllocLightContext initializer" << std::endl; 
   }
 
   __device__ __host__ void copyParameters(const SlabAllocLightContext& rhs) {
@@ -135,8 +131,13 @@ class SlabAllocLightContext {
   }
 
   // called when the allocator fails to find an empty unit to allocate:
-  __device__ __forceinline__ void updateMemBlockIndex(uint32_t global_warp_id) {
+  __device__ __forceinline__ bool updateMemBlockIndex(uint32_t global_warp_id) {
     num_attempts_++;
+
+    if(num_attempts_ > THRESHOLD_NUM_ATTEMPTS_) {
+      return false;
+    }
+
     super_block_index_++;
     super_block_index_ =
         (super_block_index_ == num_super_blocks_) ? 0 : super_block_index_;
@@ -145,6 +146,8 @@ class SlabAllocLightContext {
     // loading the assigned memory block:
     resident_bitmap_ = *(d_super_blocks_[super_block_index_] +
                          resident_index_ * BITMAP_SIZE_ + (threadIdx.x & 0x1f));
+
+    return true;
   }
 
   // Objective: each warp selects its own resident warp allocator:
@@ -179,7 +182,10 @@ class SlabAllocLightContext {
       free_lane = __ballot_sync(0xFFFFFFFF, empty_lane >= 0);
       if (free_lane == 0) {
         // all bitmaps are full: need to be rehashed again:
-        updateMemBlockIndex((threadIdx.x + blockIdx.x * blockDim.x) >> 5);
+        bool updated = updateMemBlockIndex((threadIdx.x + blockIdx.x * blockDim.x) >> 5);
+        if(!updated) {
+          return allocated_result;
+        }
         read_bitmap = resident_bitmap_;
         continue;
       }
@@ -357,11 +363,7 @@ class SlabAllocLight {
     hash_coef_ = rng();
     num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
-    std::cout << "Entering SlabAllocLight constructor" << std::endl;
-
     CHECK_ERROR(cudaMalloc((void***)&d_super_blocks_, MAX_NUM_SUPER_BLOCKS * sizeof(uint32_t*)));
-
-    //std::cout << "Allocated superblock array" << std::endl;
 
     for(auto i = 0; i < num_super_blocks_; ++i) {
       // allocate the space for the first super block
@@ -369,27 +371,15 @@ class SlabAllocLight {
       CHECK_ERROR(cudaMalloc((void**)&super_block,
                             slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
       
-      //std::cout << "malloced super block" << std::endl;
-                            
+      // copying super block pointer to super block array
       CHECK_ERROR(cudaMemcpy(d_super_blocks_ + i, &super_block, sizeof(uint32_t*), cudaMemcpyHostToDevice));
       
-      //std::cout << "Allocated super block " << i << std::endl;
-     
-      /*
-      uint32_t *cow;
-      cudaMemcpy(&cow, &d_super_blocks_[i], sizeof(uint32_t*), cudaMemcpyDeviceToHost);
-      std::cout << "cow " << cow << std::endl;
-      std::cout << "super block " << super_block << std::endl;
-      */
-
       // setting bitmaps into zeros:
       CHECK_ERROR(cudaMemset(super_block,
                             0x00,
                             slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
                             slab_alloc_context_.BITMAP_SIZE_ * sizeof(uint32_t)));
       
-      //std::cout << "Set bit maps" << std::endl;
-
       // setting empty memory units into ones:
       CHECK_ERROR(cudaMemset(super_block + 
                             (slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
@@ -398,8 +388,6 @@ class SlabAllocLight {
                             slab_alloc_context_.MEM_BLOCK_SIZE_ *
                             slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
                             sizeof(uint32_t)));
-
-      //std::cout << "Set super block " << i << std::endl;
     }
     
     // initializing the slab context:
