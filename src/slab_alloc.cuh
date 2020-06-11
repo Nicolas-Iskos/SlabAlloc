@@ -43,10 +43,10 @@ class SlabAllocLightContext {
       ((BITMAP_SIZE_ + MEM_BLOCK_SIZE_) * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
   static constexpr uint32_t MEM_BLOCK_OFFSET_ =
       (BITMAP_SIZE_ * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
-  static constexpr uint32_t num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
   __device__ __host__ SlabAllocLightContext()
       : d_super_blocks_(nullptr)
+      , num_super_blocks_(NUM_SUPER_BLOCKS_ALLOCATOR_)
       , hash_coef_(0)
       , num_attempts_(0)
       , resident_index_(0)
@@ -55,6 +55,7 @@ class SlabAllocLightContext {
 
   __device__ __host__ SlabAllocLightContext(const SlabAllocLightContext& rhs)
       : d_super_blocks_(rhs.d_super_blocks_)
+      , num_super_blocks_(rhs.num_super_blocks_)
       , hash_coef_(rhs.hash_coef_)
       , num_attempts_(0)
       , resident_index_(0)
@@ -304,6 +305,7 @@ class SlabAllocLightContext {
  private:
   // a pointer to each super-block
   uint32_t** d_super_blocks_;
+  uint32_t num_super_blocks_;
 
   // hash_coef (register): used as (16 bits, 16 bits) for hashing
   uint32_t hash_coef_;  // a random 32-bit
@@ -329,6 +331,7 @@ class SlabAllocLight {
  private:
   // a pointer to each super-block
   uint32_t** d_super_blocks_;
+  uint32_t num_super_blocks_;
 
   // hash_coef (register): used as (16 bits, 16 bits) for hashing
   uint32_t hash_coef_;  // a random 32-bit
@@ -347,36 +350,44 @@ class SlabAllocLight {
     // random coefficients for allocator's hash function
     std::mt19937 rng(time(0));
     hash_coef_ = rng();
+    num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
     CHECK_ERROR(cudaMalloc((void***)&d_super_blocks_, MAX_NUM_SUPER_BLOCKS * sizeof(uint32_t*)));
 
-    // allocate the space for the first super block
-    CHECK_ERROR(cudaMalloc((void**)&d_super_blocks_[0],
-                           slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
+    for(auto i = 0; i < num_super_blocks_; ++i) {
+      // allocate the space for the first super block
+      CHECK_ERROR(cudaMalloc((void**)&d_super_blocks_[i],
+                            slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
 
-    // setting bitmaps into zeros:
-    CHECK_ERROR(cudaMemset(d_super_blocks_[0],
-                           0x00,
-                           slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-                           slab_alloc_context_.BITMAP_SIZE_ * sizeof(uint32_t)));
+      // setting bitmaps into zeros:
+      CHECK_ERROR(cudaMemset(d_super_blocks_[i],
+                            0x00,
+                            slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                            slab_alloc_context_.BITMAP_SIZE_ * sizeof(uint32_t)));
 
-    // setting empty memory units into ones:
-    CHECK_ERROR(cudaMemset(d_super_blocks_[0] +
-                           (slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-                            slab_alloc_context_.BITMAP_SIZE_),
-                           0xFF,
-                           slab_alloc_context_.MEM_BLOCK_SIZE_ *
-                           slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
-                           sizeof(uint32_t)));
-
+      // setting empty memory units into ones:
+      CHECK_ERROR(cudaMemset(d_super_blocks_[i] +
+                            (slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                              slab_alloc_context_.BITMAP_SIZE_),
+                            0xFF,
+                            slab_alloc_context_.MEM_BLOCK_SIZE_ *
+                            slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                            sizeof(uint32_t)));
+    }
+    
     // initializing the slab context:
     slab_alloc_context_.initParameters(d_super_blocks_, hash_coef_);
   }
 
   // =========
-  // destructor: needs to be rewritten
+  // destructor:
   // =========
-  ~SlabAllocLight() { CHECK_ERROR(cudaFree(d_super_blocks_)); }
+  ~SlabAllocLight() { 
+    for(auto i = 0; i < num_super_blocks_; ++i) {
+      CHECK_ERROR(cudaFree(d_super_blocks_[i]));
+    }
+    CHECK_ERROR(cudaFree(d_super_blocks_));
+  }
 
   // =========
   // Helper member functions:
