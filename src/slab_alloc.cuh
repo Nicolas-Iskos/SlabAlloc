@@ -75,8 +75,13 @@ class SlabAllocLightContext {
   __device__ __host__ ~SlabAllocLightContext() {}
 
   __device__ __host__ void initParameters(uint32_t** d_super_block, uint32_t hash_coef) {
+
+    std::cout << "Initializing SlabAllocLightContext" << std::endl;
+
     d_super_blocks_ = d_super_block;
     hash_coef_ = hash_coef;
+
+    std:: cout << "Exiting SlabAllocLightContext initializer" << std::endl; 
   }
 
   __device__ __host__ void copyParameters(const SlabAllocLightContext& rhs) {
@@ -352,27 +357,49 @@ class SlabAllocLight {
     hash_coef_ = rng();
     num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
+    std::cout << "Entering SlabAllocLight constructor" << std::endl;
+
     CHECK_ERROR(cudaMalloc((void***)&d_super_blocks_, MAX_NUM_SUPER_BLOCKS * sizeof(uint32_t*)));
+
+    //std::cout << "Allocated superblock array" << std::endl;
 
     for(auto i = 0; i < num_super_blocks_; ++i) {
       // allocate the space for the first super block
-      CHECK_ERROR(cudaMalloc((void**)&d_super_blocks_[i],
+      uint32_t *super_block;
+      CHECK_ERROR(cudaMalloc((void**)&super_block,
                             slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
+      
+      //std::cout << "malloced super block" << std::endl;
+                            
+      CHECK_ERROR(cudaMemcpy(d_super_blocks_ + i, &super_block, sizeof(uint32_t*), cudaMemcpyHostToDevice));
+      
+      //std::cout << "Allocated super block " << i << std::endl;
+     
+      /*
+      uint32_t *cow;
+      cudaMemcpy(&cow, &d_super_blocks_[i], sizeof(uint32_t*), cudaMemcpyDeviceToHost);
+      std::cout << "cow " << cow << std::endl;
+      std::cout << "super block " << super_block << std::endl;
+      */
 
       // setting bitmaps into zeros:
-      CHECK_ERROR(cudaMemset(d_super_blocks_[i],
+      CHECK_ERROR(cudaMemset(super_block,
                             0x00,
                             slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
                             slab_alloc_context_.BITMAP_SIZE_ * sizeof(uint32_t)));
+      
+      //std::cout << "Set bit maps" << std::endl;
 
       // setting empty memory units into ones:
-      CHECK_ERROR(cudaMemset(d_super_blocks_[i] +
+      CHECK_ERROR(cudaMemset(super_block + 
                             (slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
                               slab_alloc_context_.BITMAP_SIZE_),
                             0xFF,
                             slab_alloc_context_.MEM_BLOCK_SIZE_ *
                             slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
                             sizeof(uint32_t)));
+
+      //std::cout << "Set super block " << i << std::endl;
     }
     
     // initializing the slab context:
@@ -384,7 +411,9 @@ class SlabAllocLight {
   // =========
   ~SlabAllocLight() { 
     for(auto i = 0; i < num_super_blocks_; ++i) {
-      CHECK_ERROR(cudaFree(d_super_blocks_[i]));
+      uint32_t *super_block;
+      CHECK_ERROR(cudaMemcpy(&super_block, d_super_blocks_ + i, sizeof(uint32_t*), cudaMemcpyDeviceToHost));
+      CHECK_ERROR(cudaFree(super_block));
     }
     CHECK_ERROR(cudaFree(d_super_blocks_));
   }
