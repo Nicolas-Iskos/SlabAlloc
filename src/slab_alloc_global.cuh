@@ -29,3 +29,5 @@
   } while (0)
 
 using SlabAllocAddressT = uint32_t;
+
+static constexpr uint32_t MAX_NUM_SUPER_BLOCKS = 16;
