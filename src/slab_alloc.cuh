@@ -43,7 +43,7 @@ class SlabAllocLightContext {
       ((BITMAP_SIZE_ + MEM_BLOCK_SIZE_) * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
   static constexpr uint32_t MEM_BLOCK_OFFSET_ =
       (BITMAP_SIZE_ * NUM_MEM_BLOCKS_PER_SUPER_BLOCK_);
-  static constexpr uint32_t THRESHOLD_NUM_ATTEMPTS_ = 128;
+  static constexpr uint32_t THRESHOLD_NUM_ATTEMPTS_ = 32;
 
   __device__ __host__ SlabAllocLightContext()
       : d_super_blocks_(nullptr)
@@ -65,6 +65,7 @@ class SlabAllocLightContext {
 
   SlabAllocLightContext& operator=(const SlabAllocLightContext& rhs) {
     d_super_blocks_ = rhs.d_super_blocks_;
+    num_super_blocks_ = rhs.num_super_blocks_;
     hash_coef_ = rhs.hash_coef_;
     num_attempts_ = 0;
     resident_index_ = 0;
@@ -83,6 +84,14 @@ class SlabAllocLightContext {
   __device__ __host__ void copyParameters(const SlabAllocLightContext& rhs) {
     d_super_blocks_ = rhs.d_super_blocks_;
     hash_coef_ = rhs.hash_coef_;
+  }
+  
+  __device__ __host__ void updateCtxForResizing(uint32_t num_super_blocks) {
+    num_super_blocks_ = num_super_blocks;
+  }
+
+  uint32_t getNumSuperBlocksCtx() {
+    return num_super_blocks_;
   }
 
   // =========
@@ -366,7 +375,7 @@ class SlabAllocLight {
     CHECK_ERROR(cudaMalloc((void***)&d_super_blocks_, MAX_NUM_SUPER_BLOCKS * sizeof(uint32_t*)));
 
     for(auto i = 0; i < num_super_blocks_; ++i) {
-      // allocate the space for the first super block
+      // allocate the space for the a super block
       uint32_t *super_block;
       CHECK_ERROR(cudaMalloc((void**)&super_block,
                             slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
@@ -404,6 +413,40 @@ class SlabAllocLight {
       CHECK_ERROR(cudaFree(super_block));
     }
     CHECK_ERROR(cudaFree(d_super_blocks_));
+  }
+
+  void growPool() {
+    // increase the size of the allocation pool if necessary
+
+    // allocate the new super blocks
+    for(auto i = num_super_blocks_; i < POOL_GROWTH_FACTOR  * num_super_blocks_; ++i) {
+      uint32_t *super_block;
+      CHECK_ERROR(cudaMalloc((void**)&super_block,
+                            slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
+      
+      // copying super block pointer to super block array
+      CHECK_ERROR(cudaMemcpy(d_super_blocks_ + i, &super_block, sizeof(uint32_t*), cudaMemcpyHostToDevice));
+      
+      // setting bitmaps into zeros:
+      CHECK_ERROR(cudaMemset(super_block,
+                            0x00,
+                            slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                            slab_alloc_context_.BITMAP_SIZE_ * sizeof(uint32_t)));
+      
+      // setting empty memory units into ones:
+      CHECK_ERROR(cudaMemset(super_block + 
+                            (slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                              slab_alloc_context_.BITMAP_SIZE_),
+                            0xFF,
+                            slab_alloc_context_.MEM_BLOCK_SIZE_ *
+                            slab_alloc_context_.NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ *
+                            sizeof(uint32_t)));
+
+    }
+
+    num_super_blocks_ *= POOL_GROWTH_FACTOR;
+    std::cout << "new num_super_blocks_" << num_super_blocks_ << std::endl;
+    slab_alloc_context_.updateCtxForResizing(num_super_blocks_);
   }
 
   // =========
