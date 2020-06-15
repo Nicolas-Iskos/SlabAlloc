@@ -373,7 +373,6 @@ class SlabAllocLight {
     num_super_blocks_ = NUM_SUPER_BLOCKS_ALLOCATOR_;
 
     CHECK_ERROR(cudaMalloc((void***)&d_super_blocks_, MAX_NUM_SUPER_BLOCKS * sizeof(uint32_t*)));
-
     for(auto i = 0; i < num_super_blocks_; ++i) {
       // allocate the space for the a super block
       uint32_t *super_block;
@@ -416,10 +415,21 @@ class SlabAllocLight {
   }
 
   void growPool() {
-    // increase the size of the allocation pool if necessary
+
+    std::cout << "Resizing poool" << std::endl;
+
+    auto growth_size = 0;
+    switch(num_super_blocks_) {
+      case 2:
+        growth_size = 4;
+        break;
+      case 6:
+        growth_size = 8;
+        break;
+    }
 
     // allocate the new super blocks
-    for(auto i = num_super_blocks_; i < POOL_GROWTH_FACTOR  * num_super_blocks_; ++i) {
+    for(auto i = num_super_blocks_; i < num_super_blocks_ + growth_size; ++i) {
       uint32_t *super_block;
       CHECK_ERROR(cudaMalloc((void**)&super_block,
                             slab_alloc_context_.SUPER_BLOCK_SIZE_ * sizeof(uint32_t)));
@@ -444,8 +454,7 @@ class SlabAllocLight {
 
     }
 
-    num_super_blocks_ *= POOL_GROWTH_FACTOR;
-    std::cout << "new num_super_blocks_" << num_super_blocks_ << std::endl;
+    num_super_blocks_ += growth_size;
     slab_alloc_context_.updateCtxForResizing(num_super_blocks_);
   }
 

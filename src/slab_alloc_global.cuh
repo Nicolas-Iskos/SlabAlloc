@@ -31,4 +31,3 @@
 using SlabAllocAddressT = uint32_t;
 
 static constexpr uint32_t MAX_NUM_SUPER_BLOCKS = 32;
-static constexpr uint32_t POOL_GROWTH_FACTOR = 2;
