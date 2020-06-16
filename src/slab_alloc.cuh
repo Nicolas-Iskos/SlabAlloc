@@ -90,6 +90,13 @@ class SlabAllocLightContext {
     num_super_blocks_ = num_super_blocks;
   }
 
+  __device__ __host__ uint32_t getNumSlabsInPool() {
+    return num_super_blocks_ * 
+          (SUPER_BLOCK_SIZE_ - NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 
+                               NUM_BITMAP_PER_MEM_BLOCK_ * 
+                               BITMAP_SIZE_) / MEM_UNIT_SIZE_;
+  }
+
   uint32_t getNumSuperBlocksCtx() {
     return num_super_blocks_;
   }
@@ -414,9 +421,7 @@ class SlabAllocLight {
     CHECK_ERROR(cudaFree(d_super_blocks_));
   }
 
-  void growPool() {
-
-    std::cout << "Resizing poool" << std::endl;
+  uint32_t growPool() {
 
     auto growth_size = 0;
     switch(num_super_blocks_) {
@@ -456,6 +461,8 @@ class SlabAllocLight {
 
     num_super_blocks_ += growth_size;
     slab_alloc_context_.updateCtxForResizing(num_super_blocks_);
+
+    return slab_alloc_context_.getNumSlabsInPool();
   }
 
   // =========
