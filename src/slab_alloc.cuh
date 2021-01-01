@@ -93,7 +93,6 @@ class SlabAllocLightContext {
   __device__ __host__ uint32_t getNumSlabsInPool() {
     return num_super_blocks_ * 
           (SUPER_BLOCK_SIZE_ - NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ * 
-                               NUM_BITMAP_PER_MEM_BLOCK_ * 
                                BITMAP_SIZE_) / MEM_UNIT_SIZE_;
   }
 
