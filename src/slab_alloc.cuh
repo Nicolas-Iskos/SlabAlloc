@@ -149,9 +149,9 @@ class SlabAllocLightContext {
   __device__ __forceinline__ bool updateMemBlockIndex(uint32_t global_warp_id) {
     num_attempts_++;
 
-    if(num_attempts_ > THRESHOLD_NUM_ATTEMPTS_) {
-      return false;
-    }
+    //if(num_attempts_ > THRESHOLD_NUM_ATTEMPTS_) {
+    //  return false;
+    //}
 
     super_block_index_++;
     super_block_index_ =
@@ -198,9 +198,9 @@ class SlabAllocLightContext {
       if (free_lane == 0) {
         // all bitmaps are full: need to be rehashed again:
         bool updated = updateMemBlockIndex((threadIdx.x + blockIdx.x * blockDim.x) >> 5);
-        if(!updated) {
-          return allocated_result;
-        }
+        //if(!updated) {
+        //  return allocated_result;
+        //}
         read_bitmap = resident_bitmap_;
         continue;
       }
