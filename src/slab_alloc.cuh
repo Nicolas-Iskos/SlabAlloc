@@ -111,7 +111,7 @@ class SlabAllocLightContext {
   __device__ __host__ __forceinline__ uint32_t
   getMemBlockIndex(SlabAllocAddressT address) const {
     //return ((address >> MEM_BLOCK_BIT_OFFSET_ALLOC_) & 0x1FFFF);
-    return ((address >> MEM_BLOCK_BIT_OFFSET_ALLOC_) & 0x08FFF);
+    return ((address >> MEM_BLOCK_BIT_OFFSET_ALLOC_) & 0x07FFF);
   }
 
   __device__ __host__ __forceinline__ SlabAllocAddressT
