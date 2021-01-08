@@ -34,7 +34,7 @@ class SlabAllocLightContext {
   static constexpr uint32_t BITMAP_SIZE_ = 32;
   static constexpr uint32_t WARP_SIZE_ = 32;
   static constexpr uint32_t MEM_UNIT_SIZE_ = MEM_UNIT_WARP_MULTIPLES_ * WARP_SIZE_;
-  static constexpr uint32_t SUPER_BLOCK_BIT_OFFSET_ALLOC_ = 27;
+  static constexpr uint32_t SUPER_BLOCK_BIT_OFFSET_ALLOC_ = 25;
   static constexpr uint32_t MEM_BLOCK_BIT_OFFSET_ALLOC_ = 10;
   static constexpr uint32_t MEM_UNIT_BIT_OFFSET_ALLOC_ = 5;
   static constexpr uint32_t NUM_MEM_BLOCKS_PER_SUPER_BLOCK_ = (1 << LOG_NUM_MEM_BLOCKS_);
@@ -424,12 +424,12 @@ class SlabAllocLight {
   
     auto growth_size = 0;
     switch(num_super_blocks_) {
-      case 1:
-        growth_size = 8;
+      case 15:
+        growth_size = 16;
         std::cout << "doubling the first time" << std::endl;
         break;
-      case 9:
-        growth_size = 16;
+      case 31:
+        growth_size = 32;
         std::cout << "doubling the second time" << std::endl;
         break;
     }
