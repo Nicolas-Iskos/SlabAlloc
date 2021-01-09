@@ -425,11 +425,11 @@ class SlabAllocLight {
   
     auto growth_size = 0;
     switch(num_super_blocks_) {
-      case 11:
+      case 2:
         growth_size = 16;
         std::cout << "doubling the first time" << std::endl;
         break;
-      case 27:
+      case 18:
         growth_size = 32;
         std::cout << "doubling the second time" << std::endl;
         break;
