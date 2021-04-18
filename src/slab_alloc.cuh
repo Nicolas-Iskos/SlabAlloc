@@ -359,6 +359,7 @@ class SlabAllocLight {
   // a pointer to each super-block
   uint32_t** d_super_blocks_;
   uint32_t num_super_blocks_;
+  uint32_t num_buckets_;
 
   // hash_coef (register): used as (16 bits, 16 bits) for hashing
   uint32_t hash_coef_;  // a random 32-bit
@@ -373,7 +374,10 @@ class SlabAllocLight {
   // =========
   // constructor:
   // =========
-  SlabAllocLight() : d_super_blocks_(nullptr), hash_coef_(0) {
+  SlabAllocLight(uint32_t num_buckets) : 
+    num_buckets_(num_buckets),
+    d_super_blocks_(nullptr), 
+    hash_coef_(0) {
     // random coefficients for allocator's hash function
     std::mt19937 rng(time(0));
     hash_coef_ = rng();
@@ -421,19 +425,18 @@ class SlabAllocLight {
     CHECK_ERROR(cudaFree(d_super_blocks_));
   }
 
+  // Grows slab pool by adding additional super blocks
   uint32_t growPool() {
-  
-    auto growth_size = 0;
-    switch(num_super_blocks_) {
-      case 15:
-        growth_size = 16;
-        std::cout << "doubling the first time" << std::endl;
-        break;
-      case 31:
-        growth_size = 32;
-        std::cout << "doubling the second time" << std::endl;
-        break;
-    }
+    
+    uint32_t slab_size = 128;
+    uint32_t super_block_size = 
+      (1<<slab_alloc_context_.MEM_BLOCK_BIT_OFFSET_ALLOC_) * slab_size * (1<<LOG_NUM_MEM_BLOCKS_); 
+    
+    // number of super block equivalents taken up by the base slabs
+    uint32_t num_super_blocks_base = (num_buckets_ * slab_size) / super_block_size;
+
+    // double total footprint by growing by the same size as the current footprint
+    auto growth_size = num_super_blocks_ + num_super_blocks_base;
 
     // allocate the new super blocks
     for(auto i = num_super_blocks_; i < num_super_blocks_ + growth_size; ++i) {
